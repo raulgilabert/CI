@@ -90,4 +90,38 @@ La unión de esta memoria accesible se llama Access Bank.
 
 ## I/O
 
+1. ANSEL se usa para ver si se usa en digital (0) o analógico (0)
+2. TRIS se selecciona en 1 si es input y 0 si es output
+3. Si se lee por el pin se usa el registro PORTx, en caso de escribir se hace
+por LATx
+
+## Pipelining
+
+Las instrucciones de PIC18 se dividen en dos fases: fetch y la ejecución.
+
+Al mismo tiempo se ejecuta la ejecución de una instrucción y la vez el fetch de
+la siguiente.
+
+Las instrucciones de salto al tener que rehacer el fetch de la siguiente
+instrucción por el cambio de dirección de memoria tienen un ciclo de ejecución
+de NOP.
+
+## Direccionamiento
+
+Hay 4 tipos de direccionamiento:
+
+- Inherente: no necesita ningún argumento `sleep`, `reset`
+- Literal: requiere un argumento explícito en el código de operación `movlw
+  0x30    ; load 0x30 en WREG`
+- Directo: Se especifica dirección de origen/destino `movwf 0x20 ; el valor
+  0x20 es un registro en modo directo`
+- Indirecto: Se accede a una dirección sin dar una dirección fija en la
+  instrucción. Se usan registros FSR como punteros
+
+
+
+
+
+
+
 
