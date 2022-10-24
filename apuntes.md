@@ -182,10 +182,14 @@ haciendo un offset con otro valor.
 
 ## I/O
 
-1. ANSEL se usa para ver si se usa en digital (0) o analógico (0)
-2. TRIS se selecciona en 1 si es input y 0 si es output
-3. Si se lee por el pin se usa el registro PORTx, en caso de escribir se hace
-por LATx
+Los pines I/O de este microcontrolador están agrupados por grupos de 8 pines
+que tienen 4 registros: Registro de Control de Input Analógico (ANSELx),
+Registro de Dirección de Datos (TRISx), Registro de Latch (LATx) que sirve para
+output y registro de dato (PORTx) que sirve para input.
+
+El registro TRISx de esta manera se pone en 1 para seleccionar el puerto como
+input y 0 como output. Y el ANSELx se pone a 0 en caso de tener un input
+digital y 1 si es analógico.
 
 ### Display de 7 segmentos
 
@@ -211,20 +215,113 @@ cambia.
 
 #### Efecto hall
 
-La modificación del campo magnético al apretar se detecta como boltaje entre
+La modificación del campo magnético al apretar se detecta como voltaje entre
 las dos caras del cristal de la tecla.
 
 #### Mecánico
 
-Dos placas metálicas que se tocan completando el circuito eléctrico.
+Dos placas metálicas que se tocan completando el circuito eléctrico. Tienen el
+problema de genera una serie de pulsos en lugar de un único pulso limpio al
+entrar en contacto por el mecanismo que usan.
 
+La mejor forma de evitar este problema de pequeños pulsos es mediante software
+al momento de detectar un pulso cambiante esperar unos milisegundos y comprobar
+si se ha mantenido cambiado para aceptarlo como bueno.
 
 
 ## Interrupciones
 
+Un microprocesador puede ejecutar muchísimas más instrucciones por segundo de
+lo que se puede enviar y recibir por los dispositivos de I/O. Además que puede
+que el dispositivo no esté preparado para enviar/recibir los datos en el
+momento en el que el procesador está preparado para hacerlo.
 
+### Mecanismos de sincronización
 
-### Mecánismos de interrupción
+#### Ciclo ciego
+
+Se espera una cantidad fija de tiempo y se asume que la operación de I/O se
+debe de haber completado para ese momento. Esto suele usarse cuando la
+velocidad del dispositivo es corta y predecible.
+
+#### Gadfly
+
+Un bucle en el software que comprueba el estado de I/O a la espera de que tenga
+el estado de completado. Se suele usar cuando el tiempo de respuesta no es
+importante.
+
+#### Interrupciones
+
+Se usa hardware para causa una excepción especial de software. Se usa cuando el
+tiempo de respuesta es crucial.
+
+#### Comprobaciones periódicas
+
+Se usan interrupciones de reloj para comprobar periódicamente el estado de I/O.
+se usa cuando se requieren interrupciones pero el dispositivo de I/O no soporta
+peticiones.
+
+#### DMA
+
+Transferencia directa del dispositivo de I/O con la memoria sin intervención de
+la CPU. Se usa cuando el ancho de banda y la latencia son importantes.
+
+### Características de las interrupciones
+
+#### Posibilidad de hacer máscaras
+
+A las interrupciones se les puede pasar una máscara de forma que algunas que no
+sean necesarias se ignoren. Aun así hay alguna interrupciones que no pueden ser
+ignoradas por estas máscaras y que necesitan un tratamiento inmediato.
+
+#### Prioridad de las interrupciones
+
+Hay interrupciones que necesitan ser tratadas por delante de otras aunque estas
+estén en ejecución, por eso algunos microcontroladores permiten poner prioridad
+a las interrupciones, de forma que si hay alguna en ejecución, se para y se
+ejecuta la prioritaria.
+
+#### Registros relacionados con las interrupciones
+
+Hay diversos registros relacionados con las interrupciones con diferentes
+funciones. Cada tipo de interrupción tiene en total 3 bits relacionados a ella:
+el bit de flag que vale 1 en caso de que se haya producido esa interrupción, el
+bit de habilitación que sirve para habilitar o deshabilitar la interrupción y,
+por último, el bit de prioridad que sirve para seleccionar si es una
+iterrupción de baja o alta prioridad, este bit solo afecta en caso de que el
+bit que habilita las prioridades esté encendido.
+
+### Operación de interrupción
+
+Todas las interrupciones se dividen entre el grupo de nucleo y el grupo de
+periféricos, estando en el grupo de nucleo las interrupciones de los pines
+INT0...INT2, la interrupción de overflow en TMR0 y las interrupciones de cambio
+de valor en los pines RB7...RB4.
+
+Las interrupciones de nucleo se deben de habilitar a través de poner el bit de
+GIE a 1 y el bit de habilitación de la interrupción correspondiente. En cambio,
+los bits del grupo de periféricos requieren habilitar el bit GIE, PEIE y el
+propio de la interrupción para poder funcionar.
+
+Para poder indentificar la interrupción que ha producido la llamada a la
+función se tienen que comprobar uno a uno cada bit de flag de interrupción.
+
+Al iniciar la rutina de interrupción el bit de flag de esta se pone a 0 para
+evitar que al terminar se vuelva a entrar. Además de esto GIEL se vacía y no se
+vuelve a activar hasta que se acaba la rutina.
+
+Al acabar la rutina se ejecuta `retfie` en caso de que sea de baja preferencia
+o `retfie FAST` en caso de que sea de alta preferencia.
+
+En caso de que se haya ejecutado una interrupción de alta preferencia los 3
+registros que se tienen que guardar en el stack si es de baja preferencia se
+guarda en los registros SHADOW, ya que al no tener posibilidad de que la rutina
+sea interrumpida no hay peligro de perder el valor de los registros en una
+interrupción.
+
+#### Programación de la rutina
+
+##### C
 
 A la hora de programar la rutina de interrupción hay que hacerlo de esta
 manera:
@@ -233,16 +330,11 @@ manera:
 void interrupt RSIHigh() {
     ...
 }
+
+void interrupt low_prority RSOLow() {
+    ...
+}
 ```
-
-Cuando se llama a una RSI se tienen que guardar los registros `STATUS`, `WREG`
-y `BSR`.
-
-Cuando se produce una interrupción hay que asignarla a alta o baja prioridad,
-por ejemplo: Timer a HIGHPrio y C A/D a LOWPrio. De esta manera hay que
-identificar qué dispositivo ha generado la interrupción. Como se puede deducir,
-en caso de que se esté tratando una interrupción de baja prioridad y se produza
-una de alta prioridad esta se interrumpe y se ejecuta la alta.
 
 Si la RSI tiene que ejecutar alguna cosa con salidas se guarda algún valor en
 una variable global para saber qué debe hacerse.
@@ -262,10 +354,6 @@ una variable global para saber qué debe hacerse.
     - Stack Overflow
     - Divide by Zero
 
-### RCON e ICON
-
-Leer de la documentación
-
 ## Timer
 
 Permite realizar interrupciones periódicas. Permiten medir la amplitud y
@@ -276,8 +364,8 @@ los 2, 4 y 6 son de 8 bits.
 
 Cuando acaba el tiempo del timer se genera una interrupción.
 
-2, 4 y 6 usan el reloj del ciclo de instrucciones como su reloj mientrsa que el
-resto pueden usar relojes externos.
+2, 4 y 6 usan el reloj del ciclo de instrucciones como su reloj mientras que el
+resto pueden usar relojes externos además del interno como fuente de reloj.
 
 0 está designado para actuar como core interrupt muentras que el resto están el
 el grupo de periféricos.
@@ -291,6 +379,8 @@ PRx se lanza la interrupción.
 Puede ser configurado como de 8 o 16 bits. Puede ser timer si funciona con el
 oscilador interno o contador si se hace con uno externo.
 
+La operación se controla a través del registro T0CON.
+
 ---
 
 En los timers de 16 bits hay que leer primero la parte baja y después la alta.
@@ -298,7 +388,19 @@ En caso de producirse una interrupción en medio de las lecturas, de forma que
 el clock haya ido aumentando.Esto se arregla usando un buffer en el que se
 guarda el valor del high.
 
+### 1/3/5
+
+Son timers/contadores de 16 bits dependiendo de la fuente de reloj, al igual
+que Timer0 funciona a partir de una interrupción que es emitida al producirse
+overflow.
+
+Estos temporizadores pueden ser usados para crear delays y medir la frecuencia
+de señales desconocidas.
+
 ### 2/4/6
 
 Tienen clock Fcy (Fosc/4) y prescaler y postscaler que permite reducir todavía
-más los ticks recibidos por el timer.
+más los ticks recibidos por el timer. Se controlan por TxCON y están
+relacionados con los registros PRx debido a que la interrupción salta cuando el
+contenido del temporizador es igual al del registro relacionado con este.
+Además puede ser una fuente para las señales PWM.
